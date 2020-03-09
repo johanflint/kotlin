@@ -7,6 +7,7 @@ package org.jetbrains.kotlin.idea.debugger.coroutine.data
 
 import com.sun.jdi.ObjectReference
 import com.sun.jdi.ThreadReference
+import org.jetbrains.kotlin.idea.debugger.coroutine.proxy.data.CoroutineStackFrameItem
 
 /**
  * Represents state of a coroutine.
@@ -15,9 +16,7 @@ import com.sun.jdi.ThreadReference
 data class CoroutineInfoData(
     val name: String,
     val state: State,
-
     val stackTrace: List<StackTraceElement>,
-    // links to jdi.* references
     val activeThread: ThreadReference? = null, // for suspended coroutines should be null
     val lastObservedFrameFieldRef: ObjectReference?
 ) {

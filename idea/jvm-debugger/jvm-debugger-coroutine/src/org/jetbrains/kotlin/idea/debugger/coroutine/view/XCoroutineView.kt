@@ -45,8 +45,12 @@ import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.debugger.coroutine.CoroutineDebuggerContentInfo
 import org.jetbrains.kotlin.idea.debugger.coroutine.CoroutineDebuggerContentInfo.Companion.XCOROUTINE_POPUP_ACTION_GROUP
 import org.jetbrains.kotlin.idea.debugger.coroutine.VersionedImplementationProvider
-import org.jetbrains.kotlin.idea.debugger.coroutine.data.*
-import org.jetbrains.kotlin.idea.debugger.coroutine.proxy.*
+import org.jetbrains.kotlin.idea.debugger.coroutine.data.CoroutineInfoData
+import org.jetbrains.kotlin.idea.debugger.coroutine.proxy.ApplicationThreadExecutor
+import org.jetbrains.kotlin.idea.debugger.coroutine.proxy.ContinuationHolder
+import org.jetbrains.kotlin.idea.debugger.coroutine.proxy.CoroutineDebugProbesProxy
+import org.jetbrains.kotlin.idea.debugger.coroutine.proxy.ManagerThreadExecutor
+import org.jetbrains.kotlin.idea.debugger.coroutine.proxy.data.*
 import org.jetbrains.kotlin.idea.debugger.coroutine.util.CreateContentParams
 import org.jetbrains.kotlin.idea.debugger.coroutine.util.CreateContentParamsProvider
 import org.jetbrains.kotlin.idea.debugger.coroutine.util.XDebugSessionListenerProvider
@@ -82,7 +86,7 @@ class XCoroutineView(val project: Project, val session: XDebugSession) :
     }
 
     init {
-        someCombobox.setRenderer(versionedImplementationProvider.comboboxListCellRenderer())
+        someCombobox.renderer = versionedImplementationProvider.comboboxListCellRenderer()
         object : ComboboxSpeedSearch(someCombobox) {
             override fun getElementText(element: Any?): String? {
                 return element.toString()
@@ -91,8 +95,8 @@ class XCoroutineView(val project: Project, val session: XDebugSession) :
         someCombobox.addItem(null)
         val myToolbar = createToolbar()
         val myThreadsPanel = Wrapper()
-        myThreadsPanel.setBorder(CustomLineBorder(CaptionPanel.CNT_ACTIVE_BORDER_COLOR, 0, 0, 1, 0))
-        myThreadsPanel.add(myToolbar?.getComponent(), BorderLayout.EAST)
+        myThreadsPanel.border = CustomLineBorder(CaptionPanel.CNT_ACTIVE_BORDER_COLOR, 0, 0, 1, 0)
+        myThreadsPanel.add(myToolbar?.component, BorderLayout.EAST)
         myThreadsPanel.add(someCombobox, BorderLayout.CENTER)
         mainPanel.add(panel.mainPanel, BorderLayout.CENTER)
         selectedNodeListener.installOn()
@@ -125,7 +129,7 @@ class XCoroutineView(val project: Project, val session: XDebugSession) :
         }
     }
 
-    fun renewRoot(suspendContext: XSuspendContext) {
+    fun renewRoot(suspendContext: SuspendContextImpl) {
         panel.tree.setRoot(XCoroutinesRootNode(suspendContext), false)
         if (treeState != null) {
             restorer?.dispose()
@@ -134,7 +138,10 @@ class XCoroutineView(val project: Project, val session: XDebugSession) :
     }
 
     override fun dispose() {
-        restorer?.dispose()
+        if (restorer != null) {
+            restorer?.dispose()
+            restorer = null
+        }
     }
 
     fun forceClear() {
@@ -155,12 +162,12 @@ class XCoroutineView(val project: Project, val session: XDebugSession) :
 
     inner class EmptyNode : XValueContainerNode<XValueContainer>(panel.tree, null, true, object : XValueContainer() {})
 
-    inner class XCoroutinesRootNode(suspendContext: XSuspendContext) :
+    inner class XCoroutinesRootNode(suspendContext: SuspendContextImpl) :
         XValueContainerNode<CoroutineGroupContainer>(panel.tree, null, false, CoroutineGroupContainer(suspendContext, "Default group"))
 
-    inner class CoroutineGroupContainer(val suspendContext: XSuspendContext, val groupName: String) : XValueContainer() {
+    inner class CoroutineGroupContainer(val suspendContext: SuspendContextImpl, val groupName: String) : XValueContainer() {
         override fun computeChildren(node: XCompositeNode) {
-            if (suspendContext is SuspendContextImpl && suspendContext.suspendPolicy == EventRequest.SUSPEND_ALL) {
+            if (suspendContext.suspendPolicy == EventRequest.SUSPEND_ALL) {
                 val groups = XValueChildrenList.singleton(CoroutineContainer(suspendContext, groupName))
                 node.addChildren(groups, true)
             } else {
@@ -173,7 +180,7 @@ class XCoroutineView(val project: Project, val session: XDebugSession) :
     }
 
     inner class CoroutineContainer(
-        val suspendContext: XSuspendContext,
+        val suspendContext: SuspendContextImpl,
         val groupName: String
     ) : RendererContainer(renderer.renderGroup(groupName)) {
 
@@ -199,20 +206,20 @@ class XCoroutineView(val project: Project, val session: XDebugSession) :
 
     inner class FramesContainer(
         private val infoData: CoroutineInfoData,
-        private val suspendContext: XSuspendContext
+        private val suspendContext: SuspendContextImpl
     ) : RendererContainer(renderer.render(infoData)) {
 
         override fun computeChildren(node: XCompositeNode) {
             managerThreadExecutor.on(suspendContext).schedule {
                 val debugProbesProxy = CoroutineDebugProbesProxy(suspendContext)
                 val children = XValueChildrenList()
-                debugProbesProxy.frameBuilder().build(infoData)
+                var stackFrames = debugProbesProxy.frameBuilder().build(infoData)
                 val creationStack = mutableListOf<CreationCoroutineStackFrameItem>()
-                infoData.stackFrameList.forEach {
-                    if (it is CreationCoroutineStackFrameItem)
-                        creationStack.add(it)
-                    else if (it is CoroutineStackFrameItem)
-                        children.add(CoroutineFrameValue(it))
+                for (frame in stackFrames) {
+                    if (frame is CreationCoroutineStackFrameItem)
+                        creationStack.add(frame)
+                    else if (frame is CoroutineStackFrameItem)
+                        children.add(CoroutineFrameValue(frame))
                 }
                 children.add(CreationFramesContainer(infoData, creationStack))
                 node.addChildren(children, true)
@@ -296,19 +303,30 @@ class XCoroutineView(val project: Project, val session: XDebugSession) :
                             val position =
                                 getPosition(frame.stackTraceElement.className, frame.stackTraceElement.lineNumber) ?: return false
                             val threadProxy = threadSuspendContext.thread as ThreadReferenceProxyImpl
-                            createStackAndSetFrame(threadProxy, { SyntheticStackFrame(frame.emptyDescriptor(), emptyList(), position) })
+                            createStackAndSetFrame(threadProxy, {
+                                SyntheticStackFrame(
+                                    frame.emptyDescriptor(),
+                                    emptyList(),
+                                    position
+                                )
+                            })
                         }
                         is SuspendCoroutineStackFrameItem -> {
                             val threadProxy = threadSuspendContext.thread as ThreadReferenceProxyImpl
-                            val executionContext = executionContext(threadSuspendContext, frame.frame)
-                            createStackAndSetFrame(threadProxy, { createSyntheticStackFrame(executionContext, frame) })
+                            createStackAndSetFrame(threadProxy, { createSyntheticStackFrame(threadSuspendContext, frame) })
                         }
                         is RestoredCoroutineStackFrameItem -> {
                             val threadProxy = frame.frame.threadProxy()
                             val position = getPosition(frame.location.declaringType().name(), frame.location.lineNumber()) ?: return false
                             createStackAndSetFrame(
                                 threadProxy,
-                                { SyntheticStackFrame(frame.emptyDescriptor(), frame.spilledVariables, position) }
+                                {
+                                    SyntheticStackFrame(
+                                        frame.emptyDescriptor(),
+                                        frame.spilledVariables,
+                                        position
+                                    )
+                                }
                             )
 
                         }
@@ -369,19 +387,22 @@ class XCoroutineView(val project: Project, val session: XDebugSession) :
     }
 
     private fun createSyntheticStackFrame(
-        executionContext: ExecutionContext,
+        suspendContext: SuspendContextImpl,
         frame: SuspendCoroutineStackFrameItem
     ): SyntheticStackFrame? {
 
         val position =
             applicationThreadExecutor.readAction { getPosition(frame.stackTraceElement.className, frame.stackTraceElement.lineNumber) }
                 ?: return null
-        val lookupContinuation = LookupContinuation(executionContext, frame.stackTraceElement)
-        val continuation = lookupContinuation.findContinuation(frame.lastObservedFrameFieldRef) ?: return null
+        val continuation =
+            ContinuationHolder.lookup(suspendContext, frame.lastObservedFrameFieldRef)
+                ?: return null
 
-        val asyncStackTraceContext = lookupContinuation.createAsyncStackTraceContext(continuation)
-        val vars = asyncStackTraceContext?.getSpilledVariables(continuation) ?: return null
-        return SyntheticStackFrame(frame.emptyDescriptor(), vars, position)
+        return SyntheticStackFrame(
+            frame.emptyDescriptor(),
+            continuation.getSpilledVariables() ?: return null,
+            position
+        )
     }
 }
 
