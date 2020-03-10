@@ -1,6 +1,6 @@
 // TARGET_BACKEND: JVM
-// FILE: inline.kt
 // KOTLIN_CONFIGURATION_FLAGS: ASSERTIONS_MODE=jvm
+// FILE: inline.kt
 // WITH_RUNTIME
 // FULL_JDK
 package test
@@ -19,7 +19,6 @@ class B {
 }
 
 // FILE: inlineSite.kt
-// KOTLIN_CONFIGURATION_FLAGS: ASSERTIONS_MODE=jvm
 import test.*
 
 class Checker {

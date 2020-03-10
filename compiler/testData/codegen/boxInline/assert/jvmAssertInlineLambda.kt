@@ -11,7 +11,6 @@ inline fun call(c: () -> Unit) {
 }
 
 // FILE: inlineSite.kt
-// KOTLIN_CONFIGURATION_FLAGS: ASSERTIONS_MODE=jvm
 
 import test.*
 

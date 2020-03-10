@@ -17,7 +17,6 @@ object CrossinlineLambdaContainer {
 }
 
 // FILE: inlineSite.kt
-// KOTLIN_CONFIGURATION_FLAGS: ASSERTIONS_MODE=jvm
 
 import test.CrossinlineLambdaContainer.call
 
