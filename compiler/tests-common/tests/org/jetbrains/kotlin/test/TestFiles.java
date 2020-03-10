@@ -107,10 +107,9 @@ public class TestFiles {
 
 
                 testFiles.add(factory.createFile(module, fileName, fileText, parseDirectivesPerFile ?
-                                                                             parseDirectivesAndFlags(commonPrefixOrWholeFile + fileText)
+                                                                             parseDirectivesAndFlags( commonPrefixOrWholeFile + fileText)
                                                                                                     : allFilesOrCommonPrefixDirectives));
                 processedChars = end;
-
                 if (!nextFileExists) break;
             }
             assert processedChars == expectedText.length() : "Characters skipped from " +
