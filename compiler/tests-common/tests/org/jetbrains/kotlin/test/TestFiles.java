@@ -61,7 +61,7 @@ public class TestFiles {
             boolean preserveLocations, String coroutinesPackage, boolean parseDirectivesPerFile) {
         Map<String, M> modules = new HashMap<>();
         List<F> testFiles = Lists.newArrayList();
-        Map<String, String> allFilesOrCommonPrefixDirectives = parseDirectivesPerFile ? null : parseDirectives(expectedText);
+        Map<String, String> allFilesOrCommonPrefixDirectives = parseDirectivesPerFile ? null : parseDirectivesAndFlags(expectedText);
         Matcher matcher = FILE_OR_MODULE_PATTERN.matcher(expectedText);
         boolean hasModules = false;
         String commonPrefixOrWholeFile;
@@ -72,10 +72,10 @@ public class TestFiles {
             commonPrefixOrWholeFile = expectedText;
         }
         else {
-            int processedChars = parseDirectivesPerFile ? matcher.start() : 0;
+            int processedChars = 0;
             M module = null;
-
-            commonPrefixOrWholeFile = expectedText.substring(0, processedChars);
+            boolean firstFileProcessed = false;
+            commonPrefixOrWholeFile = expectedText.substring(0, matcher.start());
 
             // Many files
             while (true) {
@@ -107,9 +107,10 @@ public class TestFiles {
 
 
                 testFiles.add(factory.createFile(module, fileName, fileText, parseDirectivesPerFile ?
-                                                                             parseDirectivesAndFlags( commonPrefixOrWholeFile + fileText)
+                                                                             parseDirectivesAndFlags( firstFileProcessed ? commonPrefixOrWholeFile + fileText : fileText)
                                                                                                     : allFilesOrCommonPrefixDirectives));
                 processedChars = end;
+                firstFileProcessed = true;
                 if (!nextFileExists) break;
             }
             assert processedChars == expectedText.length() : "Characters skipped from " +

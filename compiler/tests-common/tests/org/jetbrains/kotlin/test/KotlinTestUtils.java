@@ -98,7 +98,7 @@ public class KotlinTestUtils {
     private static final List<File> filesToDelete = new ArrayList<>();
 
     static final Pattern DIRECTIVE_PATTERN = Pattern.compile("^//\\s*!([\\w_]+)(:\\s*(.*)$)?", Pattern.MULTILINE);
-    static final Pattern BACKEND_DIRECTIVE_PATTERN = Pattern.compile("^//\\s*(FULL_JDK|JVM_TARGET|KOTLIN_CONFIGURATION_FLAGS|LANGUAGE_VERSION|COMMON_COROUTINES_TEST|COROUTINES_PACKAGE|WITH_RUNTIME|WITH_REFLECT)(:[ \\t]*(.*)$)?", Pattern.MULTILINE);
+    static final Pattern BACKEND_DIRECTIVE_PATTERN = Pattern.compile("^//\\s*(FULL_JDK|JVM_TARGET|KOTLIN_CONFIGURATION_FLAGS|LANGUAGE_VERSION|COMMON_COROUTINES_TEST|COROUTINES_PACKAGE|WITH_RUNTIME|WITH_REFLECT|NO_CHECK_LAMBDA_INLINING|SKIP_INLINE_CHECK_IN)(:[ \\t]*(.*)$)?", Pattern.MULTILINE);
 
     private KotlinTestUtils() {
     }
